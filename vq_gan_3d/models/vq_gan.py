@@ -2,13 +2,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
 
-from .encoder import Encoder
-from .decoder import Decoder
-from .codebook import Codebook
-from .lpips import LPIPS
-from ..utils import shift_dim, adopt_weight
+from vq_gan_3d.models.encoder import Encoder
+from vq_gan_3d.models.decoder import Decoder
+from vq_gan_3d.models.codebook import Codebook
+from vq_gan_3d.models.lpip import LPIPS
+from vq_gan_3d.util import shift_dim, adopt_weight
 
 
 
@@ -25,40 +24,35 @@ def vanilla_d_loss(logits_real, logits_fake):
     return d_loss
 
 class VQGAN(nn.Module):
-    def __init__(self, *, dim, init_dim=None, out_dim=None, dim_mults=(1, 2, 4, 8), channels=3,
-                 z_channels=None, resnet_block_groups=32, n_codes=2**13, embed_dim=None,
-                 gan_feat_weight=4.0, disc_channels=64, disc_layers=3, disc_loss_type='vanilla', disc_iter_start=20000,
-                 image_gan_weight=1.0, video_gan_weight=1.0, perceptual_weight=4.0, l1_weight=4.0):
+    def __init__(self, cfg):
         super().__init__()
         
-        self.encoder = Encoder(dim, init_dim, out_dim, dim_mults, channels,
-            z_channels, resnet_block_groups)
-        self.decoder = Decoder(dim, init_dim, out_dim, dim_mults, channels,
-            z_channels, resnet_block_groups)
+        self.encoder = Encoder(cfg.model.dim, cfg.model.init_dim, cfg.model.out_dim, cfg.model.dim_mults, cfg.model.channels,
+            cfg.model.z_channels, cfg.model.resnet_block_groups)
+        self.decoder = Decoder(cfg.model.dim, cfg.model.init_dim, cfg.model.out_dim, cfg.model.dim_mults, cfg.model.channels,
+            cfg.model.z_channels, cfg.model.resnet_block_groups)
 
         self.enc_z_ch = self.encoder.z_channels
-        self.embed_dim = embed_dim if embed_dim is not None else self.enc_z_ch
+        self.embed_dim = cfg.model.embed_dim if cfg.model.embed_dim is not None else self.enc_z_ch
         self.pre_vq_conv = nn.Conv3d(self.enc_z_ch, self.embed_dim, 1)
         self.post_vq_conv = nn.Conv3d(self.embed_dim, self.enc_z_ch, 1)
-        self.codebook = Codebook(n_codes, self.enc_z_ch)
+        self.codebook = Codebook(cfg.model.n_codes, self.enc_z_ch)
 
-        self.gan_feat_weight = gan_feat_weight
+        self.gan_feat_weight = cfg.model.gan_feat_weight
         # TODO: Changed batchnorm from sync to normal
-        # self.image_discriminator = NLayerDiscriminator(channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm2d)
-        self.video_discriminator = NLayerDiscriminator3D(channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm3d)
+        self.discriminator = NLayerDiscriminator3D(cfg.model.channels, cfg.model.disc_channels, cfg.model.disc_layers, norm_layer=nn.BatchNorm3d)
 
-        if disc_loss_type == 'vanilla':
+        if cfg.model.disc_loss_type == 'vanilla':
             self.disc_loss = vanilla_d_loss
-        elif disc_loss_type == 'hinge':
+        elif cfg.model.disc_loss_type == 'hinge':
             self.disc_loss = hinge_d_loss
-        self.disc_iter_start = disc_iter_start
+        self.disc_iter_start = cfg.model.disc_iter_start
 
         self.perceptual_model = LPIPS().eval()
 
-        # self.image_gan_weight = image_gan_weight
-        self.video_gan_weight = video_gan_weight
-        self.perceptual_weight = perceptual_weight
-        self.l1_weight = l1_weight
+        self.gan_weight = cfg.model.gan_weight
+        self.perceptual_weight = cfg.model.perceptual_weight
+        self.l1_weight = cfg.model.l1_weight
         self.global_step = 0
 
     def encode(self, x, include_embeddings=False, quantize=True):
@@ -108,44 +102,30 @@ class VQGAN(nn.Module):
                 perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight
 
             # Discriminator loss (turned on after a certain epoch)
-            # logits_image_fake, pred_image_fake = self.image_discriminator(frames_recon)
-            logits_video_fake, pred_video_fake = self.video_discriminator(x_recon)
-            # g_image_loss = -torch.mean(logits_image_fake)
-            g_video_loss = -torch.mean(logits_video_fake)
-            g_loss = self.video_gan_weight*g_video_loss# + self.image_gan_weight*g_image_loss
+            logits_fake, pred_fake = self.discriminator(x_recon)
+            g_loss = -self.gan_weight*torch.mean(logits_fake)
             disc_factor = adopt_weight(self.global_step, threshold=self.disc_iter_start)
             aeloss = disc_factor * g_loss
 
             # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
-            # image_gan_feat_loss = 0
-            video_gan_feat_loss = 0
+            gan_feat_loss = 0
             feat_weights = 4.0 / (3 + 1)
-            # if self.image_gan_weight > 0:
-            #     logits_image_real, pred_image_real = self.image_discriminator(frames)
-            #     for i in range(len(pred_image_fake)-1):
-            #         image_gan_feat_loss += feat_weights * \
-            #             F.l1_loss(pred_image_fake[i], pred_image_real[i].detach()) * (self.image_gan_weight > 0)
-            if self.video_gan_weight > 0:
-                logits_video_real, pred_video_real = self.video_discriminator(x)
-                for i in range(len(pred_video_fake)-1):
-                    video_gan_feat_loss += feat_weights * \
-                        F.l1_loss(pred_video_fake[i], pred_video_real[i].detach()) * (self.video_gan_weight > 0)
-            gan_feat_loss = disc_factor * self.gan_feat_weight * video_gan_feat_loss#(image_gan_feat_loss + video_gan_feat_loss)
+            if self.gan_weight > 0:
+                logits_real, pred_real = self.discriminator(x)
+                for i in range(len(pred_fake)-1):
+                    gan_feat_loss += feat_weights * F.l1_loss(pred_fake[i], pred_real[i].detach()) * (self.gan_weight > 0)
+            gan_feat_loss = disc_factor * self.gan_feat_weight * gan_feat_loss
             return recon_loss, vq_output, aeloss, perceptual_loss, gan_feat_loss
 
         if optimizer_idx == 1:
             # Train discriminator
-            # logits_image_real, _ = self.image_discriminator(frames.detach())
-            logits_video_real, _ = self.video_discriminator(x.detach())
+            logits_real, _ = self.discriminator(x.detach())
+            logits_fake, _ = self.discriminator(x_recon.detach())
 
-            # logits_image_fake, _ = self.image_discriminator(frames_recon.detach())
-            logits_video_fake, _ = self.video_discriminator(x_recon.detach())
-
-            # d_image_loss = self.disc_loss(logits_image_real, logits_image_fake)
-            d_video_loss = self.disc_loss(logits_video_real, logits_video_fake)
+            d_loss = self.disc_loss(logits_real, logits_fake)
             disc_factor = adopt_weight(self.global_step, threshold=self.disc_iter_start)
 
-            discloss = disc_factor * (self.video_gan_weight*d_video_loss)# + self.image_gan_weight*d_image_loss)
+            discloss = disc_factor * (self.gan_weight*d_loss)
             return discloss
         
     def update_step(self):

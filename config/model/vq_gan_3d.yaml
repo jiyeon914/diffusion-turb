@@ -1,0 +1,46 @@
+# Yet Another Markup Language - "Yaml Ain't Markup Language"
+run_name: "20240528 LDM 3D vqgan test"
+device: "cuda"
+
+paths:
+  file_dir: "/data/jykim3994/02_LDM"
+  data_dir: "/data/jykim3994/00_Data/3D FHIT/resolution 128"
+
+data:
+  data_res: 128
+  start: 100
+  num_train: 1
+  val_sample: 200
+
+params:
+  lr: 1e-4
+  batch_size: 1
+  epochs: 200
+
+model:
+  dim: 64
+  init_dim: 32
+  out_dim: None
+  dim_mults: (1, 2, 4)
+  channels: 3
+  z_channels: 3
+  resnet_block_groups: 32
+  n_codes: 2**13
+  embed_dim: None
+  disc_channels: 64
+  disc_layers: 3
+  disc_loss_type: 'vanilla'
+  disc_iter_start: 20000
+  gan_weight: 1.0
+  gan_feat_weight: 4.0
+  perceptual_weight: 4.0
+  l1_weight: 4.0
+
+hydra:
+  run:
+    dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+
+
+
+
+

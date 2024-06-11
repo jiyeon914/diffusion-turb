@@ -4,7 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 
 # from .modules import default, Residual, PreNorm, Upsample, ResnetBlock, Attention, LinearAttention, make_attn
-from .modules import default, Upsample, ResnetBlock
+from vq_gan_3d.models.module import default, Upsample, ResnetBlock
 
 
 
