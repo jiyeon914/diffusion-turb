@@ -49,7 +49,7 @@ nu = 0.006416 # 1.0e-3  # Kinematic viscosity (adjust as needed)
 
 
 
-@hydra.main(version_base=None, config_path="../config/model", config_name="vq_gan_3d")
+@hydra.main(version_base=None, config_path="../config", config_name="vq_gan_3d")
 def train(cfg: DictConfig):
     device = cfg.device; batch_size = cfg.params.batch_size
     file_dir = cfg.paths.file_dir; run_name = cfg.run_name

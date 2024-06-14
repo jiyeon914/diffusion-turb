@@ -12,7 +12,7 @@ which pip3
 echo
 pip3 list | grep pytorch
 echo
-python3 'train_ddpm.py' run_name='20240613 ldm test'
+python3 'train_ddpm.py' run_name='20240614 ldm test dim64' unet.dim=64 unet.init_dim=32 params.batch_size=8
 
 # End of File.
 

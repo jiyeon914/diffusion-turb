@@ -30,7 +30,7 @@ unet:
 diffusion:
   vqgan_model_case: "20240611 vqgan test"
   vqgan_ckpt: 200
-  vqgan_config: "../config/model/vq_gan_3d.yaml"
+  vqgan_config: "../config/vq_gan_3d.yaml"
   channels: 3
   loss_type: "huber"
   timesteps: 1000

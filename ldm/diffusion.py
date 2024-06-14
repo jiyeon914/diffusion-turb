@@ -48,6 +48,7 @@ def extract(a, t, x_shape):
 class Diffusion:
     def __init__(self, denoise_fn, cfg):
         super().__init__()
+        self.cfg = cfg
         self.device = cfg.device
         if cfg.diffusion.vqgan_ckpt:
             vqgan_cfg_path = cfg.diffusion.vqgan_config
@@ -121,10 +122,10 @@ class Diffusion:
 
         if clip_denoised:
             s = 1.
-            if cfg.diffusion.use_dynamic_thres:
+            if self.cfg.diffusion.use_dynamic_thres:
                 s = torch.quantile(
                     rearrange(x0_hat, 'b ... -> b (...)').abs(),
-                    cfg.diffusion.dynamic_thres_percentile,
+                    self.cfg.diffusion.dynamic_thres_percentile,
                     dim=-1
                 )
 
@@ -140,7 +141,7 @@ class Diffusion:
     @torch.inference_mode()
     def p_sample(self, x_t, t_index, condition, clip_denoised=True, sample_mode='xt_x0'):
         b = x_t.shape[0]
-        t = (torch.ones(n) * t_index).long().to(self.device)
+        t = (torch.ones(b) * t_index).long().to(self.device)
 
         model_mean, model_variance = self.p_mean_variance(
             x_t=x_t, t=t, condition=condition, clip_denoised=clip_denoised, sample_mode=sample_mode)
@@ -163,7 +164,6 @@ class Diffusion:
 
     @torch.inference_mode()
     def sample(self, x_t, t_index, condition, sample_mode='xt_x0'):
-        batch_size = cond.shape[0] if exists(cond) else batch_size
         _sample = self.p_sample_loop(x_t, t_index, condition, sample_mode)
 
         if isinstance(self.vqgan, VQGAN):

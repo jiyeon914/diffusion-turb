@@ -50,7 +50,7 @@ nu = 0.006416 # 1.0e-3  # Kinematic viscosity (adjust as needed)
 
 
 
-@hydra.main(version_base=None, config_path="../config/model", config_name="ddpm")
+@hydra.main(version_base=None, config_path="../config", config_name="ddpm")
 def train(cfg: DictConfig):
     device = cfg.device; batch_size = cfg.params.batch_size
     file_dir = cfg.paths.file_dir; run_name = cfg.run_name
@@ -101,30 +101,30 @@ def train(cfg: DictConfig):
         floss.write('%d %.10f\n' %(epoch, loss.item()))
         floss.close()
 
-        # if epoch % (cfg.params.epochs//5) == 0:
-        torch.save(model.state_dict(), os.path.join(file_dir, "MODELS", run_name, f"{epoch}ckpt.pt"))
+        if epoch % (cfg.params.epochs//5) == 0:
+            torch.save(model.state_dict(), os.path.join(file_dir, "MODELS", run_name, f"{epoch}ckpt.pt"))
 
-        model.eval()
-        with torch.no_grad():
-            val_dataloader = get_batch(data_val, cfg, shuffle=False)
-            for it, (X, Y) in enumerate(val_dataloader):
-                X = X.to(device); Y = Y.to(device)
-                x_t = torch.randn_like(X)
-                x0_hat = diffusion.sample(x_t, diffusion.timesteps, Y)
-                if it == 0:
-                    pred = x0_hat.to(device='cpu')
-                else:
-                    pred = torch.cat((pred,x0_hat.to(device='cpu')), dim=0)
-            
-        Filewrite1 = os.path.join(file_dir, run_name, f"{run_name} val z-pi vis epoch={epoch}.plt")
-        fvis = open(Filewrite1, 'w')
-        fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
-        for q in range(data_val.shape[0]):
-            fvis.write(f'ZONE T="T={(q+cfg.data.start+cfg.data.lead_time)*del_t:.1f}" I={Nx} J={Ny}\n')
-            for j in range(Ny):
-                for i in range(Nx):
-                    fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
-        fvis.close()
+            # model.eval()
+            # with torch.no_grad():
+            #     val_dataloader = get_batch(data_val, cfg, shuffle=False)
+            #     for it, (X, Y) in enumerate(val_dataloader):
+            #         X = X.to(device); Y = Y.to(device)
+            #         x_t = torch.randn_like(X)
+            #         x0_hat = diffusion.sample(x_t, diffusion.timesteps, Y)
+            #         if it == 0:
+            #             pred = x0_hat.to(device='cpu')
+            #         else:
+            #             pred = torch.cat((pred,x0_hat.to(device='cpu')), dim=0)
+                
+            # Filewrite1 = os.path.join(file_dir, run_name, f"{run_name} val z-pi vis epoch={epoch}.plt")
+            # fvis = open(Filewrite1, 'w')
+            # fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
+            # for q in range(data_val.shape[0]):
+            #     fvis.write(f'ZONE T="T={(q+cfg.data.start+cfg.data.lead_time)*del_t:.1f}" I={Nx} J={Ny}\n')
+            #     for j in range(Ny):
+            #         for i in range(Nx):
+            #             fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
+            # fvis.close()
 
 if __name__ == '__main__':
     train()
