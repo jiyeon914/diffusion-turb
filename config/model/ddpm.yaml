@@ -1,28 +1,61 @@
-vqgan_ckpt: ??? 
+# Yet Another Markup Language - "Yaml Ain't Markup Language"
+run_name: "20240612 LDM 3D ddpm test"
+device: "cuda"
 
-# Have to be derived from VQ-GAN Latent space dimensions
-diffusion_img_size: ???
-diffusion_depth_size: ???
-diffusion_num_channels: ???
-dim_mults: ???
-results_folder: /data/home/firas/Desktop/work/other_groups/medicaldiffusion/checkpoints/ddpm/
-results_folder_postfix: ''
-load_milestone: False
+paths:
+  file_dir: "/data/jykim3994/02_LDM"
+  data_dir: "/data/jykim3994/00_Data/3D FHIT/resolution 128"
 
-batch_size: 40
-num_workers: 20
-logger: wandb
-objective: pred_x0
-save_and_sample_every: 1000
-denoising_fn: Unet3D
-train_lr: 1e-4
-timesteps: 300 # number of steps
-sampling_timesteps: 250 # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
-loss_type: l1 # L1 or L2
-train_num_steps: 700000 # total training steps
-gradient_accumulate_every: 2 # gradient accumulation steps
-ema_decay: 0.995 # exponential moving average decay
-amp: False # turn on mixed precision
-num_sample_rows: 1
-gpus: 0
+data:
+  data_res: 128
+  start: 100
+  num_train: 1
+  val_sample: 200
+  lead_time: 6
+
+params:
+  lr: 1e-4
+  batch_size: 1
+  epochs: 200
+
+unet:
+  dim: 32
+  init_dim: # None when init_dim = dim
+  out_dim: # None
+  dim_mults: [1, 2, 4, 8]
+  channels: 3
+  self_condition: True
+  resnet_block_groups: 8
+
+diffusion:
+  vqgan_model_case: "20240611 vqgan test"
+  vqgan_ckpt: 200
+  vqgan_config: "../config/model/vq_gan_3d.yaml"
+  channels: 3
+  loss_type: "huber"
+  timesteps: 1000
+  use_dynamic_thres: False # from the Imagen paper
+  dynamic_thres_percentile: 0.9
+   
+hydra:
+  run:
+    dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+
+
+# batch_size: 40
+# num_workers: 20
+# logger: wandb
+# objective: pred_x0
+# save_and_sample_every: 1000
+# denoising_fn: Unet3D
+# train_lr: 1e-4
+# timesteps: 300 # number of steps
+# sampling_timesteps: 250 # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
+# loss_type: l1 # L1 or L2
+# train_num_steps: 700000 # total training steps
+# gradient_accumulate_every: 2 # gradient accumulation steps
+# ema_decay: 0.995 # exponential moving average decay
+# amp: False # turn on mixed precision
+# num_sample_rows: 1
+# gpus: 0
 

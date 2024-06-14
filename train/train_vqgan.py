@@ -11,7 +11,7 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=log
 import numpy as np
 import torch
 exp = torch.exp
-from torch import nn, optim
+from torch import optim
 import hydra
 from omegaconf import DictConfig
 from torchinfo import summary
@@ -51,29 +51,30 @@ nu = 0.006416 # 1.0e-3  # Kinematic viscosity (adjust as needed)
 
 @hydra.main(version_base=None, config_path="../config/model", config_name="vq_gan_3d")
 def train(cfg: DictConfig):
-    device = cfg.device; batch_size = cfg.params.batch_size; data_res = cfg.data.data_res
-
+    device = cfg.device; batch_size = cfg.params.batch_size
+    file_dir = cfg.paths.file_dir; run_name = cfg.run_name
+    
     setup_logging(cfg)
     data_train, data_val, _ = read_data(cfg)
     model = VQGAN(cfg).to(device) # VQGAN(dim=64, init_dim=32, dim_mults=(1, 2, 4), z_channels=3).to(device)
-    summary(model, input_size = [(batch_size, 3, 128, 128, 128)])
-    logging.info("VQ-GAN : ", sum(p.numel() for p in model.parameters() if p.requires_grad))
-    logging.info(model)
-    logging.info(f'Allocated: {torch.cuda.memory_allocated()/1024**3} GB')
-    logging.info(f'Reserved: {torch.cuda.memory_reserved()/1024**3} GB')
+    summary(model, input_size=[(batch_size, 3, 128, 128, 128)])
+    print("VQ-GAN : ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print(model)
+    print(f'Allocated: {torch.cuda.memory_allocated()/1024**3} GB')
+    print(f'Reserved: {torch.cuda.memory_reserved()/1024**3} GB')
 
     opt_ae = optim.Adam(list(model.encoder.parameters()) +
                         list(model.decoder.parameters()) +
                         list(model.pre_vq_conv.parameters()) +
                         list(model.post_vq_conv.parameters()) +
                         list(model.codebook.parameters()),
-                        lr=cfg.lr, betas=(0.5, 0.9))
+                        lr=cfg.params.lr, betas=(0.5, 0.9))
     opt_disc = optim.Adam(list(model.discriminator.parameters()),
-                          lr=cfg.lr, betas=(0.5, 0.9))
+                          lr=cfg.params.lr, betas=(0.5, 0.9))
     # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 20, gamma = 0.5)
 
     file_path = {
-        "losses": os.path.join(cfg.paths.file_dir, cfg.run_name, f"{cfg.run_name} loss terms tracking.plt"),
+        "losses": os.path.join(file_dir, run_name, f"{run_name} loss terms tracking.plt"),
     }
     loss_vars = '"epoch","total loss","recon loss","commit loss","adv loss","percept loss","gan feat loss","disc loss"'
     init_file(file_path['losses'], loss_vars, '"Loss"')
@@ -109,8 +110,8 @@ def train(cfg: DictConfig):
                               aeloss.item(), perceptual_loss.item(), gan_feat_loss.item(), loss_disc.item()))
                 floss.close()
         # scheduler.step()
-        logging.info(f"End of epoch{epoch} global step {model.global_step}: loss ae {loss_ae.item():.10f}, loss D {loss_disc.item()}, \
-                     {recon_loss.item()} {vq_output['commitment_loss'].item()} {aeloss.item()} {perceptual_loss.item()} {gan_feat_loss.item()}")
+        logging.info(f"End of epoch{epoch} global step {model.global_step}: loss ae {loss_ae.item():.10f}, loss D {loss_disc.item()}, ",
+                     f"{recon_loss.item()} {vq_output['commitment_loss'].item()} {aeloss.item()} {perceptual_loss.item()} {gan_feat_loss.item()}")
 
         floss = open(file_path['losses'], 'a')
         floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f %.10f\n'\
@@ -119,7 +120,7 @@ def train(cfg: DictConfig):
         floss.close()
 
         if epoch % (cfg.params.epochs//5) == 0:
-            torch.save(model.state_dict(), os.path.join(Filename, "MODELS", run_name, f"{epoch}ckpt.pt"))
+            torch.save(model.state_dict(), os.path.join(file_dir, "MODELS", run_name, f"{epoch}ckpt.pt"))
 
             model.eval(); val_loss = 0
             with torch.no_grad():
@@ -136,7 +137,7 @@ def train(cfg: DictConfig):
                         pred = torch.cat((pred,x_recon.to(device='cpu')), dim=0)
                 # val_loss /= len(val_dataloader)
                 
-            Filewrite1 = os.path.join(cfg.paths.file_dir, cfg.run_name, f"{run_name} val z-pi vis epoch={epoch}.plt")
+            Filewrite1 = os.path.join(file_dir, run_name, f"{run_name} val z-pi vis epoch={epoch}.plt")
             fvis = open(Filewrite1, 'w')
             fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
             for q in range(data_val.shape[0]):

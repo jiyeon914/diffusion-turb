@@ -1,4 +1,5 @@
 from inspect import isfunction
+import math
 
 import torch
 from torch import nn, einsum
@@ -47,9 +48,9 @@ def Upsample(in_channels, out_channels):
     )
 
 class Block(nn.Module):
-    def __init__(self, in_channels, out_channels, groups=32):
+    def __init__(self, in_channels, out_channels, groups=8):
         super().__init__()
-        self.proj = nn.Conv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1, padding_mode='circular')
+        self.proj = nn.Conv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1)
         self.norm = nn.GroupNorm(groups, out_channels)
         self.act = nn.SiLU()
 
@@ -61,7 +62,7 @@ class Block(nn.Module):
 
 class ResnetBlock(nn.Module):
     """https://arxiv.org/abs/1512.03385"""
-    def __init__(self, in_channels, out_channels, *, time_emb_dim=None, groups=32):
+    def __init__(self, in_channels, out_channels, *, time_emb_dim=None, groups=8):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.SiLU(),
@@ -75,9 +76,9 @@ class ResnetBlock(nn.Module):
     def forward(self, x, time_emb=None):
         if exists(self.mlp) and exists(time_emb):
             time_emb = self.mlp(time_emb)
-            time_emb = rearrange(time_emb, "b c -> b c 1 1")
+            time_emb = rearrange(time_emb, "b c -> b c 1 1 1")
 
-        h = self.block1(x)
+        h = self.block1(x) + time_emb
         h = self.block2(h)
         return h + self.res_conv(x)
 
@@ -140,3 +141,23 @@ def make_attn(in_channels, attn_type="vanilla"):
         return nn.Identity(in_channels)
     else:
         return LinearAttention(in_channels)
+
+class Positional_Embedding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, time):
+        device = time.device
+        embeds = math.log(10000.0) / self.dim
+        embeds = torch.exp(torch.arange(0., self.dim, 2, device=device) * -embeds)
+        embeds = time[:, None] * embeds[None, :]
+        embeds = torch.cat((embeds.sin(), embeds.cos()), dim = -1)
+        return embeds
+
+    # def forward(self, time):
+    #     inv_freq = 1.0/(10000**(torch.arange(0, self.dim, 2, device=self.device).float()/self.dim))
+    #     pos_enc_a = torch.sin(time.repeat(1, self.dim//2)*inv_freq)
+    #     pos_enc_b = torch.cos(time.repeat(1, self.dim//2)*inv_freq)
+    #     pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim = -1)
+    #     return pos_enc

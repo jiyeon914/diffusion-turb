@@ -3,7 +3,6 @@ from functools import partial
 from torch import nn
 import torch.nn.functional as F
 
-# from .modules import default, Residual, PreNorm, Downsample, ResnetBlock, Attention, LinearAttention, make_attn
 from vq_gan_3d.models.module import default, Downsample, ResnetBlock
 
 
