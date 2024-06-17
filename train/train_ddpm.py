@@ -71,7 +71,7 @@ def train(cfg: DictConfig):
     file_path = {
         "data_loss": os.path.join(file_dir, run_name, f"{run_name} training MSE.plt"),
     }
-    loss_vars = '"epoch","Training MSE","Validation MSE"'
+    loss_vars = '"epoch","Training MSE"'
     init_file(file_path['data_loss'], loss_vars, '"MSE"')
 
     torch.cuda.empty_cache()

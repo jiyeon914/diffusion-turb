@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import yaml
 from omegaconf import OmegaConf
+from einops import rearrange
 
 from vq_gan_3d.models.vq_gan import VQGAN
 from ldm.models.module import default
@@ -139,7 +140,7 @@ class Diffusion:
         return model_mean, posterior_variance
 
     @torch.inference_mode()
-    def p_sample(self, x_t, t_index, condition, clip_denoised=True, sample_mode='xt_x0'):
+    def p_sample(self, x_t, t_index, condition, clip_denoised: bool, sample_mode):
         b = x_t.shape[0]
         t = (torch.ones(b) * t_index).long().to(self.device)
 
@@ -151,20 +152,20 @@ class Diffusion:
         return model_mean + nonzero_mask * model_variance * noise
 
     @torch.inference_mode()
-    def p_sample_loop(self, x_t, t_index, condition, sample_mode):
+    def p_sample_loop(self, x_t, t_index, condition, clip_denoised: bool, sample_mode):
         b = x_t.shape[0]
         logging.info(f"Sampling {b} new images using {sample_mode} starting from t = {t_index}....")
 
         # loop = []
         for i in reversed(range(0, t_index)):
-            x_t = self.p_sample(x_t, i, condition, sample_mode)
+            x_t = self.p_sample(x_t, i, condition, clip_denoised, sample_mode)
         #     loop.append(x_t)
         # x_t = torch.cat([loop[i] for i in range(t_index)], dim=1)
         return x_t
 
     @torch.inference_mode()
-    def sample(self, x_t, t_index, condition, sample_mode='xt_x0'):
-        _sample = self.p_sample_loop(x_t, t_index, condition, sample_mode)
+    def sample(self, x_t, t_index, condition, clip_denoised=True, sample_mode='xt_x0'):
+        _sample = self.p_sample_loop(x_t, t_index, condition, clip_denoised, sample_mode)
 
         if isinstance(self.vqgan, VQGAN):
             # denormalize TODO: Remove eventually
