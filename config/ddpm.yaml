@@ -33,13 +33,14 @@ diffusion:
   vqgan_config: "../config/vq_gan_3d.yaml"
   channels: 3
   loss_type: "huber"
+  loss_reduction: # default is "mean"
   timesteps: 1000
   use_dynamic_thres: False # from the Imagen paper
   dynamic_thres_percentile: 0.9
    
 hydra:
   run:
-    dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    dir: ../outputs/train_ddpm/${now:%Y-%m-%d}/${now:%H-%M-%S}  
 
 
 # batch_size: 40

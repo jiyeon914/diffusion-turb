@@ -12,7 +12,7 @@ which pip3
 echo
 pip3 list | grep pytorch
 echo
-python3 'test_vqgan.py' params.batch_size=4 +test_name='20240614 vqgan output' hydra.run.dir='../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+python3 'test_vqgan.py' params.batch_size=4 +test_name='20240614 vqgan output' hydra.run.dir='../outputs/test_vqgan/${now:%Y-%m-%d}/${now:%H-%M-%S}'
 
 # End of File.
 

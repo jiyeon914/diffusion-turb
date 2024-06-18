@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 from einops import rearrange
 
 from vq_gan_3d.models.vq_gan import VQGAN
-from ldm.models.module import default
+from ldm.models.module import exists, default
 
 
 
@@ -69,7 +69,7 @@ class Diffusion:
                          if self.vqgan is not None else cfg.diffusion.channels)
         self.denoise_fn = denoise_fn
         self.loss_type = cfg.diffusion.loss_type
-        
+        self.loss_reduction = cfg.diffusion.loss_reduction if exists(cfg.diffusion.loss_reduction) else None
         
         schedule = beta_schedule(timesteps=cfg.diffusion.timesteps)
         self.timesteps = schedule.timesteps
@@ -216,17 +216,39 @@ class Diffusion:
         x_noisy, _ = self.q_sample(x0, t, noise)
         pred_noise = self.denoise_fn(x_noisy, t, condition)
 
-        if self.loss_type == 'l1':
-            loss = F.l1_loss(noise, pred_noise)
-        elif self.loss_type == 'l2':
-            loss = F.mse_loss(noise, pred_noise)
-        elif self.loss_type == 'huber':
-            loss = F.huber_loss(noise, pred_noise)
+        if self.loss_reduction is None or self.loss_reduction == 'mean':
+            if self.loss_type == 'l1':
+                loss = F.l1_loss(noise, pred_noise)
+            elif self.loss_type == 'l2':
+                loss = F.mse_loss(noise, pred_noise)
+            elif self.loss_type == 'huber':
+                loss = F.huber_loss(noise, pred_noise)
+            else:
+                raise NotImplementedError()
+        elif self.loss_reduction == 'sum':
+            if self.loss_type == 'l1':
+                loss = F.l1_loss(noise, pred_noise, reduction=self.loss_reduction)
+            elif self.loss_type == 'l2':
+                loss = F.mse_loss(noise, pred_noise, reduction=self.loss_reduction)
+            elif self.loss_type == 'huber':
+                loss = F.huber_loss(noise, pred_noise, reduction=self.loss_reduction)
+            else:
+                raise NotImplementedError()
+        elif self.loss_reduction == 'none': 
+            if self.loss_type == 'l1':
+                loss = F.l1_loss(noise, pred_noise, reduction=self.loss_reduction)
+            elif self.loss_type == 'l2':
+                loss = F.mse_loss(noise, pred_noise, reduction=self.loss_reduction)
+            elif self.loss_type == 'huber':
+                loss = F.huber_loss(noise, pred_noise, reduction=self.loss_reduction)
+            else:
+                raise NotImplementedError()
+            loss = torch.sum(torch.mean(loss, dim=(1,2,3,4)))
         else:
             raise NotImplementedError()
-
+        
         return loss
-
+    
     def compute_loss(self, x0, condition):
         if isinstance(self.vqgan, VQGAN):
             with torch.no_grad():

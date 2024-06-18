@@ -56,7 +56,9 @@ nu = 0.006416 # 1.0e-3  # Kinematic viscosity (adjust as needed)
 
 # change config_path depending on the configuration of the trained model
 # @hydra.main(version_base=None, config_path="../outputs/2024-06-14/12-48-12/.hydra", config_name="config") #dim32
-@hydra.main(version_base=None, config_path="../outputs/2024-06-14/12-48-40/.hydra", config_name="config") #dim64
+# @hydra.main(version_base=None, config_path="../outputs/2024-06-14/12-48-40/.hydra", config_name="config") #dim64
+@hydra.main(version_base=None, config_path="../outputs/train_ddpm/2024-06-17/21-57-20/.hydra", config_name="config") #nt3 dim32
+# @hydra.main(version_base=None, config_path="../outputs/train_ddpm/2024-06-17/21-53-21/.hydra", config_name="config") #nt3 dim64
 def test(cfg: DictConfig):
     device = cfg.device; start = cfg.data.start; nt = cfg.data.lead_time
     file_dir = cfg.paths.file_dir; run_name = cfg.run_name; test_name = cfg.test_name
@@ -64,62 +66,62 @@ def test(cfg: DictConfig):
     _, data_val, data_test = read_data(cfg)
     data_test = torch.cat((data_val, data_test), dim=0); SL = data_test.shape[0]
     del data_val
-    # model = UNet(cfg).to(device)
-    # Restore_Dir = os.path.join(file_dir, "MODELS", run_name, f"{cfg.params.epochs}ckpt.pt")
-    # model.load_state_dict(torch.load(Restore_Dir))
-    # diffusion = Diffusion(model, cfg); T = diffusion.timesteps
-    # logging.info(f"Loading trained model and data.")
+    model = UNet(cfg).to(device)
+    Restore_Dir = os.path.join(file_dir, "MODELS", run_name, f"{cfg.params.epochs}ckpt.pt")
+    model.load_state_dict(torch.load(Restore_Dir))
+    diffusion = Diffusion(model, cfg); T = diffusion.timesteps
+    logging.info(f"Loading trained model and data.")
 
-    # model.eval()
-    # sample_mode = cfg.diffusion.sample_mode
-    # with torch.no_grad():
-    #     test_dataloader = get_batch(data_test, cfg, shuffle=False)
-    #     for it, (X, Y) in enumerate(test_dataloader):
-    #         x0 = X.to(device); condition = Y.to(device)
-    #         x0 = diffusion.vqgan.encode(x0, quantize=False)
-    #         condition = diffusion.vqgan.encode(condition, quantize=False)
-    #         # normalize to -1 and 1
-    #         x0 = ((x0 - diffusion.vqgan.codebook.embeddings.min()) /
-    #                 (diffusion.vqgan.codebook.embeddings.max() -
-    #                 diffusion.vqgan.codebook.embeddings.min())) * 2.0 - 1.0
-    #         condition = ((condition - diffusion.vqgan.codebook.embeddings.min()) /
-    #                 (diffusion.vqgan.codebook.embeddings.max() -
-    #                 diffusion.vqgan.codebook.embeddings.min())) * 2.0 - 1.0
+    model.eval()
+    sample_mode = cfg.diffusion.sample_mode
+    with torch.no_grad():
+        test_dataloader = get_batch(data_test, cfg, shuffle=False)
+        for it, (X, Y) in enumerate(test_dataloader):
+            x0 = X.to(device); condition = Y.to(device)
+            x0 = diffusion.vqgan.encode(x0, quantize=False)
+            condition = diffusion.vqgan.encode(condition, quantize=False)
+            # normalize to -1 and 1
+            x0 = ((x0 - diffusion.vqgan.codebook.embeddings.min()) /
+                    (diffusion.vqgan.codebook.embeddings.max() -
+                    diffusion.vqgan.codebook.embeddings.min())) * 2.0 - 1.0
+            condition = ((condition - diffusion.vqgan.codebook.embeddings.min()) /
+                    (diffusion.vqgan.codebook.embeddings.max() -
+                    diffusion.vqgan.codebook.embeddings.min())) * 2.0 - 1.0
 
-    #         x_t = torch.randn_like(x0)
-    #         x0_hat = diffusion.sample(x_t, T, condition, sample_mode=sample_mode)
-    #         if it == 0:
-    #             pred = x0_hat.to(device='cpu')
-    #         else:
-    #             pred = torch.cat((pred,x0_hat.to(device='cpu')), dim=0)
-    # logging.info(f"Inference for test data is done.")
-    # del X, Y, x0, condition, x0_hat
+            x_t = torch.randn_like(x0)
+            x0_hat = diffusion.sample(x_t, T, condition, sample_mode=sample_mode)
+            if it == 0:
+                pred = x0_hat.to(device='cpu')
+            else:
+                pred = torch.cat((pred,x0_hat.to(device='cpu')), dim=0)
+    logging.info(f"Inference for test data is done.")
+    del X, Y, x0, condition, x0_hat
 
-    # logging.info(f"Saving prediction results.")
-    # Save_path = os.path.join(file_dir, run_name, test_name); os.makedirs(Save_path, exist_ok=True)
-    # for q in range(SL-nt):
-    #     Save_pred = os.path.join(Save_path, f"Train{cfg.data.num_train} time{(q+start+nt)*del_t:.1f} prediction.h5")
-    #     with h5py.File(Save_pred, 'w') as fc:
-    #         fc.create_dataset(f"vel{(q+start+nt)*del_t:.1f}", data=pred[q:q+1])
+    logging.info(f"Saving prediction results.")
+    Save_path = os.path.join(file_dir, run_name, test_name); os.makedirs(Save_path, exist_ok=True)
+    for q in range(SL-nt):
+        Save_pred = os.path.join(Save_path, f"Train{cfg.data.num_train} time{(q+start+nt)*del_t:.1f} prediction.h5")
+        with h5py.File(Save_pred, 'w') as fc:
+            fc.create_dataset(f"vel{(q+start+nt)*del_t:.1f}", data=pred[q:q+1])
             
-    # Filewrite = os.path.join(file_dir, run_name, f"{test_name} Train{cfg.data.num_train} z-pi vis.plt")
-    # with open(Filewrite, 'w') as fvis:
-    #     fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
-    #     for q in range(SL-nt):
-    #         fvis.write(f'ZONE T="T={(q+start+nt)*del_t:.1f}" I={Nx} J={Ny}\n')
-    #         for j in range(Ny):
-    #             for i in range(Nx):
-    #                 fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
-    # logging.info(f"Visualization is done.")
+    Filewrite = os.path.join(file_dir, run_name, f"{test_name} Train{cfg.data.num_train} z-pi vis.plt")
+    with open(Filewrite, 'w') as fvis:
+        fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
+        for q in range(SL-nt):
+            fvis.write(f'ZONE T="T={(q+start+nt)*del_t:.1f}" I={Nx} J={Ny}\n')
+            for j in range(Ny):
+                for i in range(Nx):
+                    fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
+    logging.info(f"Visualization is done.")
 
-    # when using already sampled prediction results again
-    pred = torch.zeros([SL-nt, 3, Nz, Ny, Nx])
-    Read_path = os.path.join(file_dir, run_name, test_name)
-    for q in range(SL-nt):    
-        Read_pred = os.path.join(Read_path, f"Train{cfg.data.num_train} time{(q+start+nt)*del_t:.1f} prediction.h5")
-        with h5py.File(Read_pred, 'r') as fr:
-            key = f"vel{(q+start+nt)*del_t:.1f}"
-            pred[q:q+1] = torch.from_numpy(fr[key][:])
+    # # when using already sampled prediction results again
+    # pred = torch.zeros([SL-nt, 3, Nz, Ny, Nx])
+    # Read_path = os.path.join(file_dir, run_name, test_name)
+    # for q in range(SL-nt):    
+    #     Read_pred = os.path.join(Read_path, f"Train{cfg.data.num_train} time{(q+start+nt)*del_t:.1f} prediction.h5")
+    #     with h5py.File(Read_pred, 'r') as fr:
+    #         key = f"vel{(q+start+nt)*del_t:.1f}"
+    #         pred[q:q+1] = torch.from_numpy(fr[key][:])
 
     U_rms = cp.zeros(SL-nt, dtype=np.float32)
     TKE = cp.zeros(SL-nt, dtype=np.float32)

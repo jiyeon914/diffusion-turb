@@ -40,7 +40,7 @@ model:
 
 hydra:
   run:
-    dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    dir: ../outputs/train_vqgan/${now:%Y-%m-%d}/${now:%H-%M-%S}  
 
 
 
