@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from vq_gan_3d.models.encoder import Encoder
 from vq_gan_3d.models.decoder import Decoder
 from vq_gan_3d.models.codebook import Codebook
-from vq_gan_3d.models.lpip import LPIPS
 from vq_gan_3d.util import shift_dim, adopt_weight
 
 
@@ -48,10 +47,7 @@ class VQGAN(nn.Module):
             self.disc_loss = hinge_d_loss
         self.disc_iter_start = cfg.model.disc_iter_start
 
-        self.perceptual_model = LPIPS().eval()
-
         self.gan_weight = cfg.model.gan_weight
-        self.perceptual_weight = cfg.model.perceptual_weight
         self.l1_weight = cfg.model.l1_weight
         self.global_step = 0
 
@@ -85,23 +81,10 @@ class VQGAN(nn.Module):
         z = self.pre_vq_conv(self.encoder(x))
         vq_output = self.codebook(z)
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
-
         recon_loss = F.l1_loss(x_recon, x) * self.l1_weight
-
-        # Selects one random 2D image from each 3D Image
-        frame_idx = torch.randint(0, D, [B]).cuda()
-        frame_idx_selected = frame_idx.reshape(-1, 1, 1, 1, 1).repeat(1, C, 1, H, W)
-        frames = torch.gather(x, 2, frame_idx_selected).squeeze(2)
-        frames_recon = torch.gather(x_recon, 2, frame_idx_selected).squeeze(2)
 
         if optimizer_idx == 0:
             # Autoencoder - train the "generator"
-            # Perceptual loss
-            # perceptual_loss = 0
-            # if self.perceptual_weight > 0:
-            #     perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight
-            perceptual_loss = self.perceptual_model(frames, frames_recon).mean()
-            
             # Discriminator loss (turned on after a certain epoch)
             logits_fake, pred_fake = self.discriminator(x_recon)
             g_loss = -self.gan_weight*torch.mean(logits_fake)
@@ -116,7 +99,7 @@ class VQGAN(nn.Module):
                 for i in range(len(pred_fake)-1):
                     gan_feat_loss += feat_weights * F.l1_loss(pred_fake[i], pred_real[i].detach()) * (self.gan_weight > 0)
             gan_feat_loss = disc_factor * self.gan_feat_weight * gan_feat_loss
-            return recon_loss, vq_output, aeloss, perceptual_loss, gan_feat_loss
+            return recon_loss, vq_output, aeloss, gan_feat_loss #perceptual_loss, gan_feat_loss
 
         if optimizer_idx == 1:
             # Train discriminator

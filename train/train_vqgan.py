@@ -92,8 +92,8 @@ def train(cfg: DictConfig):
 
             # Train autoencoder
             opt_ae.zero_grad()
-            recon_loss, vq_output, aeloss, perceptual_loss, gan_feat_loss = model.compute_loss(X, optimizer_idx=0)
-            loss_ae = recon_loss + vq_output['commitment_loss'] + aeloss + gan_feat_loss #perceptual_loss + gan_feat_loss
+            recon_loss, vq_output, aeloss, gan_feat_loss = model.compute_loss(X, optimizer_idx=0)
+            loss_ae = recon_loss + vq_output['commitment_loss'] + aeloss + gan_feat_loss
             loss_ae.backward()
             opt_ae.step()
 
@@ -108,20 +108,20 @@ def train(cfg: DictConfig):
 
             if epoch == 1 and iter == 0:
                 with open(file_path['losses'], 'a') as floss:
-                    floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f\n'\
+                    floss.write('%d %.10f %.10f %.10f %.10f %.10f\n'\
                                 %(epoch-1, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
-                                  aeloss.item(), perceptual_loss.item(), gan_feat_loss.item()))
+                                  aeloss.item(), gan_feat_loss.item()))
                 with open(file_path['disc_losses'], 'a') as floss:
                     floss.write('%d %.10f %.10f %.10f\n'\
                                 %(epoch-1, loss_disc.item(), real_loss.item(), fake_loss.item()))
         # scheduler.step()
         logging.info(f"End of epoch{epoch} global step {model.global_step}: loss ae {loss_ae.item():.10f}, loss D {loss_disc.item()}, "
-                     f"{recon_loss.item()} {vq_output['commitment_loss'].item()} {aeloss.item()} {perceptual_loss.item()} {gan_feat_loss.item()}")
+                     f"{recon_loss.item()} {vq_output['commitment_loss'].item()} {aeloss.item()} {gan_feat_loss.item()}")
 
         with open(file_path['losses'], 'a') as floss:
-            floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f\n'\
+            floss.write('%d %.10f %.10f %.10f %.10f %.10f\n'\
                         %(epoch, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
-                          aeloss.item(), perceptual_loss.item(), gan_feat_loss.item()))
+                          aeloss.item(), gan_feat_loss.item()))
         with open(file_path['disc_losses'], 'a') as floss:
             floss.write('%d %.10f %.10f %.10f\n'\
                         %(epoch, loss_disc.item(), real_loss.item(), fake_loss.item()))
