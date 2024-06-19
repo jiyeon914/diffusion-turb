@@ -75,9 +75,12 @@ def train(cfg: DictConfig):
 
     file_path = {
         "losses": os.path.join(file_dir, run_name, f"{run_name} loss terms tracking.plt"),
+        "disc_losses": os.path.join(file_dir, run_name, f"{run_name} loss disc terms tracking.plt"),
     }
-    loss_vars = '"epoch","total loss","recon loss","commit loss","adv loss","percept loss","gan feat loss","disc loss"'
+    loss_vars = '"epoch","total loss","recon loss","commit loss","adv loss","percept loss","gan feat loss"'
     init_file(file_path['losses'], loss_vars, '"Loss"')
+    loss_vars = '"epoch","disc loss","real","fake"'
+    init_file(file_path['disc_losses'], loss_vars, '"Disc loss"')
 
     torch.cuda.empty_cache()
     for epoch in range(1,cfg.params.epochs+1):
@@ -90,13 +93,13 @@ def train(cfg: DictConfig):
             # Train autoencoder
             opt_ae.zero_grad()
             recon_loss, vq_output, aeloss, perceptual_loss, gan_feat_loss = model.compute_loss(X, optimizer_idx=0)
-            loss_ae = recon_loss + vq_output['commitment_loss'] + aeloss + perceptual_loss + gan_feat_loss
+            loss_ae = recon_loss + vq_output['commitment_loss'] + aeloss + gan_feat_loss #perceptual_loss + gan_feat_loss
             loss_ae.backward()
             opt_ae.step()
 
             # Train discriminator
             opt_disc.zero_grad()
-            loss_disc = model.compute_loss(X, optimizer_idx=1)
+            loss_disc, real_loss, fake_loss = model.compute_loss(X, optimizer_idx=1)
             loss_disc.backward()
             opt_disc.step()
 
@@ -104,21 +107,25 @@ def train(cfg: DictConfig):
             if iter % (l//5) == 0: logging.info(f"Iter {iter}, loss ae {loss_ae.item()}, loss D {loss_disc.item()}")
 
             if epoch == 1 and iter == 0:
-                floss = open(file_path['losses'], 'a')
-                floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f %.10f\n'\
-                            %(epoch-1, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
-                              aeloss.item(), perceptual_loss.item(), gan_feat_loss.item(), loss_disc.item()))
-                floss.close()
+                with open(file_path['losses'], 'a') as floss:
+                    floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f\n'\
+                                %(epoch-1, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
+                                  aeloss.item(), perceptual_loss.item(), gan_feat_loss.item()))
+                with open(file_path['disc_losses'], 'a') as floss:
+                    floss.write('%d %.10f %.10f %.10f\n'\
+                                %(epoch-1, loss_disc.item(), real_loss.item(), fake_loss.item()))
         # scheduler.step()
-        logging.info(f"End of epoch{epoch} global step {model.global_step}: loss ae {loss_ae.item():.10f}, loss D {loss_disc.item()}, ",
+        logging.info(f"End of epoch{epoch} global step {model.global_step}: loss ae {loss_ae.item():.10f}, loss D {loss_disc.item()}, "
                      f"{recon_loss.item()} {vq_output['commitment_loss'].item()} {aeloss.item()} {perceptual_loss.item()} {gan_feat_loss.item()}")
 
-        floss = open(file_path['losses'], 'a')
-        floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f %.10f\n'\
-                    %(epoch, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
-                      aeloss.item(), perceptual_loss.item(), gan_feat_loss.item(), loss_disc.item()))
-        floss.close()
-
+        with open(file_path['losses'], 'a') as floss:
+            floss.write('%d %.10f %.10f %.10f %.10f %.10f %.10f\n'\
+                        %(epoch, loss_ae.item(), recon_loss.item(), vq_output['commitment_loss'].item(), \
+                          aeloss.item(), perceptual_loss.item(), gan_feat_loss.item()))
+        with open(file_path['disc_losses'], 'a') as floss:
+            floss.write('%d %.10f %.10f %.10f\n'\
+                        %(epoch, loss_disc.item(), real_loss.item(), fake_loss.item()))
+            
         if epoch % (cfg.params.epochs//5) == 0:
             torch.save(model.state_dict(), os.path.join(file_dir, "MODELS", run_name, f"{epoch}ckpt.pt"))
 
@@ -138,14 +145,13 @@ def train(cfg: DictConfig):
                 # val_loss /= len(val_dataloader)
                 
             Filewrite1 = os.path.join(file_dir, run_name, f"{run_name} val z-pi vis epoch={epoch}.plt")
-            fvis = open(Filewrite1, 'w')
-            fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
-            for q in range(data_val.shape[0]):
-                fvis.write(f'ZONE T="T={(q+cfg.data.start)*del_t:.1f}" I={Nx} J={Ny}\n')
-                for j in range(Ny):
-                    for i in range(Nx):
-                        fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
-            fvis.close()
+            with open(Filewrite1, 'w') as fvis:
+                fvis.write('VARIABLES="x/pi","y/pi","u","v","w"\n')
+                for q in range(data_val.shape[0]):
+                    fvis.write(f'ZONE T="T={(q+cfg.data.start)*del_t:.1f}" I={Nx} J={Ny}\n')
+                    for j in range(Ny):
+                        for i in range(Nx):
+                            fvis.write('%lf %lf %lf %lf %lf\n' %(x[i]/pi,y[j]/pi,pred[q,0,Nz//2,j,i],pred[q,1,Nz//2,j,i],pred[q,2,Nz//2,j,i]))
 
 if __name__ == '__main__':
     train()

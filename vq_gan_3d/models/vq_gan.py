@@ -14,14 +14,14 @@ from vq_gan_3d.util import shift_dim, adopt_weight
 def hinge_d_loss(logits_real, logits_fake):
     loss_real = torch.mean(F.relu(1. - logits_real))
     loss_fake = torch.mean(F.relu(1. + logits_fake))
-    d_loss = 0.5 * (loss_real + loss_fake)
-    return d_loss
+    # d_loss = 0.5 * (loss_real + loss_fake)
+    return loss_real, loss_fake
 
 def vanilla_d_loss(logits_real, logits_fake):
-    d_loss = 0.5 * (
-        torch.mean(torch.nn.functional.softplus(-logits_real)) +
-        torch.mean(torch.nn.functional.softplus(logits_fake)))
-    return d_loss
+    loss_real = torch.mean(torch.nn.functional.softplus(-logits_real))
+    loss_fake = torch.mean(torch.nn.functional.softplus(logits_fake))
+    # d_loss = 0.5 * (loss_real + loss_fake)
+    return loss_real, loss_fake
 
 class VQGAN(nn.Module):
     def __init__(self, cfg):
@@ -97,10 +97,11 @@ class VQGAN(nn.Module):
         if optimizer_idx == 0:
             # Autoencoder - train the "generator"
             # Perceptual loss
-            perceptual_loss = 0
-            if self.perceptual_weight > 0:
-                perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight
-
+            # perceptual_loss = 0
+            # if self.perceptual_weight > 0:
+            #     perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight
+            perceptual_loss = self.perceptual_model(frames, frames_recon).mean()
+            
             # Discriminator loss (turned on after a certain epoch)
             logits_fake, pred_fake = self.discriminator(x_recon)
             g_loss = -self.gan_weight*torch.mean(logits_fake)
@@ -122,11 +123,12 @@ class VQGAN(nn.Module):
             logits_real, _ = self.discriminator(x.detach())
             logits_fake, _ = self.discriminator(x_recon.detach())
 
-            d_loss = self.disc_loss(logits_real, logits_fake)
+            loss_real, loss_fake = self.disc_loss(logits_real, logits_fake)
+            d_loss = 0.5 * (loss_real + loss_fake)
             disc_factor = adopt_weight(self.global_step, threshold=self.disc_iter_start)
 
             discloss = disc_factor * (self.gan_weight*d_loss)
-            return discloss
+            return discloss, loss_real, loss_fake
         
     def update_step(self):
         # increase global_step every iteration
